@@ -1,0 +1,31 @@
+# Python / uv
+.venv/
+__pycache__/
+*.py[cod]
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+uv.lock
+
+# Windows portable bundle (published as a GitHub Release asset, not in git)
+runtime/
+bundle-manifest.json
+*.zip
+
+# Measured data and codec outputs (never commit)
+*.TCF
+*.tcf
+*.htfc
+*.partial
+*.return.zip
+validation-data/
+validation/pytest-*.xml
+results/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

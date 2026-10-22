@@ -1,0 +1,41 @@
+[project]
+name = "htpack"
+version = "0.5.0b1"
+description = "TCF Fourier compression and fast BitRound/Pcodec with final-output RI error checks"
+readme = "README.md"
+authors = [
+    { name = "YongKeun Park", email = "yk.park@gmail.com" }
+]
+requires-python = ">=3.12,<3.13"
+classifiers = [
+    "Programming Language :: Python :: 3.12",
+    # Blocks accidental PyPI upload while the public license is undecided.
+    "Private :: Do Not Upload",
+]
+# Exact pins mirror the shipped 0.5.0b1 wheel (bit-exact decode is checked by hash).
+dependencies = [
+    "h5py>=3.14,<4",
+    "numcodecs==0.17.0",
+    "numpy==2.4.4",
+    "pcodec==0.3.5",
+    "psutil==7.2.2",
+    "scipy==1.17.1",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<10"]
+
+[project.scripts]
+htpack = "htpack.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8,<10"]
+
+[build-system]
+requires = ["uv_build>=0.13.4,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# tests/test_platform.py and test_series.py import helpers from tests/test_htpack.py
+pythonpath = ["tests"]

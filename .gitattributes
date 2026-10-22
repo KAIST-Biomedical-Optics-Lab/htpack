@@ -1,0 +1,8 @@
+# Keep LF in the repository and working tree so source bytes (and wheel hashes)
+# are identical on Windows and macOS. Windows launchers stay CRLF.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.TCF binary
+*.tcf binary
+*.htfc binary

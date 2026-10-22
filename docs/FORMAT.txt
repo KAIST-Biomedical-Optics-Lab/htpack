@@ -1,0 +1,203 @@
+HTFC MVP 0.5.0b1 -- Windows x64 internal beta; RAM-aware 3D/time-lapse compression
+
+Supported input: HDF5 TCF FormatVersion 1.3.6, 1.4.1 or 1.6.3, one or more /Data/3D
+little-endian uint16 datasets named 000000,000001,... in time order. DataCount
+must match the count, and every ZYX shape must match the group SizeZ/Y/X.
+ScalarType is 0 when present; it may be absent in the older 1.3.6/1.4.1 profiles.
+Physical RI = stored code / 10000. Spacing must be positive and finite.
+The adapter rejects unsupported versions, non-string variable-length/compound/reference
+types, links/aliases, external storage and virtual datasets rather than losing
+metadata. BF, FL, MIP, thumbnails, annotation and embedded acquisition/config
+data are copied without changing their values. Existing derived caches remain
+original-derived; they are not recomputed or relabelled inside restored TCF.
+The JSON operation report supplies provenance outside the original schema.
+Fixed and variable-length string attributes preserve their HDF5 type/dataspace
+and actual string bytes. String object-array pointer bytes are never hashed as
+metadata. Variable-length datasets remain unsupported.
+
+This is an internal Python package, not a registered PyPI release or
+an established standard. Python 3.12; native execution tested on macOS only.
+The Windows x64 beta bundles a Windows Python runtime and pinned binary wheels.
+It has not yet been executed on Windows. BMOL student validation is pending.
+
+Windows portable installation:
+  Extract htpack-0.5.0b1-windows-x64-beta.zip into a short writable folder.
+  No separately installed Python or administrator account is needed.
+  In PowerShell:
+    .\htpack.cmd --help
+    .\htpack.cmd encode "D:\data\sample.TCF" -o "D:\data\sample.htfc"
+    .\htpack.cmd encode "D:\data\sample.TCF" -o "D:\data\sample.fast.htfc" --fast
+    .\htpack.cmd decode "D:\data\sample.htfc" -o "D:\data\restored.TCF"
+  Install.cmd optionally copies the same bundle under LOCALAPPDATA/Programs/HTPack;
+  it makes no PATH or registry changes. The command remains htpack.cmd, not an
+  independently compiled single-file htpack.exe.
+
+Windows lab acceptance:
+  Extract the separate validation-data ZIP (two real TCF references + four
+  Mac-produced archives). Run Run-Tests.cmd, then:
+    .\Validate-Windows.cmd --data "D:\validation-data"
+  The harness performs native Windows encode/decode and Mac-archive decode,
+  verifies every voxel at epsilon=1e-4, audits typed metadata/non-RI arrays with
+  an independent reader, and returns logs + Windows archives in a .return.zip.
+  Windows-to-Mac is pending until verify_return.py processes that return on Mac.
+  A Mac harness rehearsal is explicitly labelled and cannot count as Windows
+  validation. Native decoder hashes/guards remain enforced on both platforms.
+
+OS adapters in 0.5: Windows peak RSS uses psutil peak_wset rather than Unix
+resource; process CPU affinity is respected when available; output publication
+uses non-overwriting Windows rename and writable fsync; console JSON is UTF-8.
+No codec/packet error contract is relaxed for portability.
+
+Run from any directory:
+  uv run --project <package-directory> htpack inspect sample.TCF
+  uv run --project <package-directory> htpack encode sample.TCF -o sample.htfc
+  uv run --project <package-directory> htpack encode sample.TCF -o sample.fast.htfc --fast
+  uv run --project <package-directory> htpack encode sample.TCF -o sample.relaxed.htfc --ri-error-scale 5
+  uv run --project <package-directory> htpack encode sample.TCF -o sample.strict.htfc --fast --ri-error-scale 0.1
+  uv run --project <package-directory> htpack encode timelapse.TCF -o timelapse.htfc
+  uv run --project <package-directory> htpack encode timelapse.TCF -o bounded.htfc --memory-gib 2
+  uv run --project <package-directory> htpack decode timelapse.htfc -o restored.TCF --concurrent-volumes auto
+  uv run --project <package-directory> htpack decode sample.htfc -o restored.TCF
+  uv run --project <package-directory> htpack verify sample.htfc --reference sample.TCF --restored restored.TCF
+
+All successful commands print JSON on stdout; progress/errors use stderr.
+Existing outputs are never overwritten; original files are never deleted.
+Unsuccessful commands return nonzero and do not publish the partial file.
+
+RI error budget (applies equally to default Fourier and --fast):
+  --ri-error-scale FACTOR multiplies 1e-4 by FACTOR; default FACTOR is 1.
+  Examples: 1 => 1e-4, 5 => 5e-4, 0.1 => 1e-5 maximum absolute RI error.
+  This is a multiplier of the allowed error, not an inverse precision score.
+  FACTOR must be finite and in (0,1000], matching the codec's epsilon <= 0.1.
+  Decimal input is converted before float arithmetic (3 => exactly float(0.0003)).
+  The legacy --max-ri-error RI accepts the absolute budget; the two options
+  are mutually exclusive. They do not alter compression mode or remove guard.
+  The manifest and packets store absolute epsilon; decode uses that value
+  automatically. Operation reports also show epsilon and ri_error_scale.
+  No packet-format change; existing v0.1 and v0.2 archives remain readable.
+  With native uint16/10000 input, epsilon < 1e-4 requires exact stored-code
+  restoration. It cannot add RI precision absent from the input TCF.
+
+Compression modes (same RI error budget and final-storage/reader guards):
+  Default: Fourier + spatial residual + Pcodec, as in version 0.1.0.
+  --fast: float32 RI BitRound + Pcodec; no FFT or Fourier spatial residual.
+Only encode accepts --fast. The archive/packet stores the selected codec;
+decode, inspect and verify infer the mode without a flag. New readers retain
+support for 0.1.0 Fourier archives without a mode field. Older 0.1.0 readers
+do not support the newly introduced fast codec.
+
+Time-lapse scheduling:
+  Input DataCount > 1 selects independent timepoint compression automatically.
+  --concurrent-volumes auto (default) chooses W <= timepoint count, floor(0.75
+  * logical CPU count), the RAM-derived worker limit and any requested N.
+  Affinity limits are respected when available. A manual N is an upper bound.
+  Available RAM, physical RAM, current process RSS and CPU count are measured
+  with psutil at command startup. Default planned total RSS is current RSS +
+  half the available RAM. --memory-gib optionally lowers this process budget.
+  256 MiB is reserved for shared metadata/cache headroom, then W is limited by
+  the estimated per-worker input buffer plus codec workspace. If even one job
+  cannot fit, the command fails before publishing output.
+  For encoding, the input buffer is at most 32 Z planes of one timepoint. If
+  that does not fit one worker, tile reads are used instead. Encoding workspace
+  estimates are 32 MiB + 192 (Fourier) or 112 (fast) bytes per maximum tile voxel;
+  decoding uses 112 or 64 bytes/voxel plus 32 MiB and a tile input buffer.
+  These are conservative planning estimates, not OS-enforced allocations or
+  a proof of globally optimal throughput. Other applications may change RAM
+  availability after startup. Measured peak process RSS is reported separately.
+  W is recomputed during decode on the current host, not copied from encoding.
+  The JSON concurrency_plan records all inputs, estimates and selected W.
+
+  At most W volume jobs are submitted but not consumed. Each worker streams
+  slabs/tiles and writes packets immediately under a shared HDF5 lock. The
+  complete movie and completed-volume payloads are not queued in RAM. Each
+  worker uses one FFT worker; there is no nested all-CPU FFT pool. Compression
+  and decompression use bounded volume jobs; verify streams serially.
+  Timepoints use independent packets, without temporal prediction or 4D FFT.
+  Varying W leaves packet bytes and reconstructed RI identical. HDF5 container
+  metadata allocation order can cause small differences in whole-file size.
+
+Root attribute htfc_format = htfc-mvp-v1 identifies a legacy single-volume archive. The /tcf
+group contains an exact typed-attribute/object-layout template of the input.
+Its RI dataset has the original shape/type/DCPL but no allocated data. All
+other datasets retain their original HDF5 dataset creation properties and data.
+The /blocks/000000 etc. datasets are uint8 binary scalar packets. The manifest
+uint8 dataset contains UTF-8 JSON with version, source schema, complete block
+coverage, source/decoded/payload hashes, error contract and dependency versions.
+No reference to the original file is required for decompression.
+
+Time-series archives use htfc_format = htfc-timeseries-v2. A memory-constrained
+single volume that uses tile-buffer fallback also uses this layout. The /tcf
+group keeps placeholders for EVERY /Data/3D timepoint, and preserves time order,
+RecordingTime/Time/TimeInterval and other typed metadata verbatim. /volumes/000000
+etc. contains one uint8 JSON manifest and a blocks group per volume. Per-volume
+manifests hold block coverage, checksums and native/decoded hashes; the root
+manifest contains small volume summaries, not a T-sized list of all blocks.
+Each JSON dataset is capped at 32 MiB. Time-series native block-hash chains
+are SHA256 of ordered per-block raw uint16 SHA256 digests, not a claim of a
+whole-file byte hash. Block packet formats are unchanged from v0.2/v0.3.
+The v0.4 reader retains v0.1-v0.3 single-volume archives. Older readers do not
+support the new time-series container or untested source TCF profiles.
+
+Each packet begins with ASCII HTFCB001, followed by a little-endian uint32
+JSON-header byte count, JSON header, and concatenated Pcodec byte streams.
+The header specifies the dtype/count/length of each stream. Fourier stream names are
+real0..3 and imag0..3 (signed Fourier integers), residual (signed integers),
+guard_index (uint32), guard_values (uint16). Pcodec does not support int8 in
+the pinned version; integer streams use the smallest of int16/int32/int64.
+
+Fast packets use codec bitround-pcodec-ri-u16-v1 with three streams: base
+(float32 BitRound RI, Pcodec level 6), guard_index (uint32), guard_values
+(uint16). Each block chooses one keepbits value analytically from the largest
+input RI and epsilon: ceil(floor(log2(max_RI))-log2(2*epsilon)), clamped to
+0..23; all-zero blocks retain zero mantissa bits. There is no trial search.
+Input is privately copied before BitRound. Returned integer-view bit patterns
+are reinterpreted as float32 RI before Pcodec encoding. The quantized base is
+converted back to stored uint16, and the same native/float32-reader exception
+guard is applied. The keepbits rule is an initial quantizer choice, not a
+replacement for final-output error verification. No FFT geometry, spectrum,
+Fourier coefficient layer or Fourier spatial correction is computed in fast.
+
+Blocks are up to 32x256x256, ordered Z,Y,X. Edge blocks retain actual sizes;
+there is no padding, spatial optical support mask or temporal prediction.
+For the default Fourier mode, mean subtraction and real FFT use float64/complex128 and norm=ortho. Radial
+bands use each axis's Nyquist normalization with edges .25,.5,1. Boundaries
+belong to the upper band. These are entropy-coding groups, not an optical OTF.
+Fourier quantization step is 5*epsilon. Inverse FFT + mean is cast to float32;
+the spatial residual is rounded to a 2*epsilon grid. The result is converted
+back to stored uint16 codes with ties-to-even rounding. Out-of-range codes,
+integer-domain budget violations and public-reader float32 RI violations are
+replaced with exact original uint16 values through guard streams. No clipping.
+
+The encoder checks both abs(code_difference)/10000 <= epsilon (using exact
+integer budget comparisons) and differences after float32(code)/float32(10000).
+This additional storage/reader check can need many guard values when input
+TCF is already quantized at the error budget. This is not the exact packet
+implementation used for float32 paper benchmarks; full-file performance is
+measured separately. The profile is tcf-u16-mvp-v1.
+
+Encoder parses/decodes every serialized packet and checks the final output.
+Decoder verifies the encoded expected uint16 output SHA-256. Unsupported
+numerical-backend variations that alter output fail closed. No untested
+cross-platform numerical equivalence is claimed. Metadata and non-RI hashes
+are checked before publishing a restored file. verify without a native
+reference checks integrity, not a newly measured RI error; --reference performs
+a full-voxel error test. --restored also checks the actual written TCF output.
+
+Input RI is read in at most 32-z-plane slabs or tiles; tiles within each active
+volume are encoded sequentially. Single-volume legacy decoding writes tiles
+without assembling the whole volume. This version does not implement folders
+of separate per-timepoint TCF files, partial extraction, resume, QAT/iDTT,
+viewer integration or general TCF-version conversion. Unsupported layouts
+are rejected. Peak process memory is reported, not bounded by an OS limit.
+
+The original TCF metadata is retained, including source-derived RI min/max,
+MIP and thumbnails. A stored cache is not proof that reconstructed RI was
+loaded by a commercial viewer. TomoAnalysis compatibility must be tested by
+opening both original and restored files in the actual application and
+checking the 3D volume, not just a thumbnail. GUI verification is a separate
+acceptance item and is not implied by a successful HDF5/array round trip.
+
+Use a fresh viewer session for restored-file testing: original UniqueID and
+Title are preserved, so an already-open original must not be mistaken for a
+newly loaded restored volume or a viewer cache. Confirm full Z navigation and
+RI volume loading, not only the preserved original thumbnail/MIP.
