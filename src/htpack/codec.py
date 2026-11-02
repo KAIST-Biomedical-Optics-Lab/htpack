@@ -48,6 +48,9 @@ def reader_values(codes):
 
 
 def quality(original,restored,epsilon):
+    if np.asarray(original).dtype.kind=="f":
+        from .ri import quality as ri_quality
+        return ri_quality(original,restored,epsilon)
     delta=restored.astype("i8")-original.astype("i8")
     maximum=int(np.abs(delta).max(initial=0))
     reader_error=np.abs(reader_values(restored).astype("f8")-reader_values(original).astype("f8"))
@@ -137,7 +140,12 @@ def _encode_fourier(original,epsilon=1e-4):
     return packet,h
 
 
-def encode_block(original,epsilon=1e-4,mode="fourier"):
+def encode_block(original,epsilon=1e-4,mode="fourier",*,reference=None,coefficient_step=None):
+    if np.asarray(original).dtype.kind=="f":
+        from .ri import encode
+        return encode(original,epsilon,mode,reference=reference,coefficient_step=coefficient_step)
+    if reference is not None or coefficient_step is not None:
+        raise ValueError("Native-reference/coefficient-step arguments require floating RI input")
     if mode=="fourier":return _encode_fourier(original,epsilon)
     if mode!="fast":raise ValueError("Compression mode must be fourier or fast")
     original=np.ascontiguousarray(original,dtype="<u2")
@@ -181,6 +189,9 @@ def encode_block(original,epsilon=1e-4,mode="fourier"):
 
 
 def unpack(packet):
+    if packet[:8]==b"HTFCF017":
+        from .ri import unpack as ri_unpack
+        return ri_unpack(packet)
     if len(packet)<12 or packet[:8]!=MAGIC:
         raise ValueError("Unrecognized block format")
     length=struct.unpack_from("<I",packet,8)[0]
@@ -229,6 +240,9 @@ def unpack(packet):
 
 
 def decode_block(packet):
+    if packet[:8]==b"HTFCF017":
+        from .ri import decode
+        return decode(packet)
     h,streams=unpack(packet)
     restored=_restore(h,streams)
     if digest(restored)!=h["decoded_sha256"]:

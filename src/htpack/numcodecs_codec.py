@@ -29,10 +29,8 @@ class HTPackCodec(Codec):
         if arr.dtype == np.dtype("<u2") or arr.dtype == np.uint16:
             u16 = np.ascontiguousarray(arr, dtype="<u2")
         elif np.issubdtype(arr.dtype, np.floating):
-            scaled = np.rint(arr.astype("f8") * codec.SCALE_DENOMINATOR)
-            if scaled.min(initial=0) < 0 or scaled.max(initial=0) > 65535:
-                raise ValueError("Scaled float RI values exceed uint16 range [0, 65535]")
-            u16 = np.ascontiguousarray(scaled, dtype="<u2")
+            packet, _ = codec.encode_block(arr, epsilon=self.epsilon, mode=self.mode)
+            return packet
         else:
             raise ValueError(f"Unsupported input dtype for HTPackCodec: {arr.dtype}")
         packet, _ = codec.encode_block(u16, epsilon=self.epsilon, mode=self.mode)
@@ -41,7 +39,10 @@ class HTPackCodec(Codec):
     def decode(self, buf, out=None):
         raw = ensure_bytes(buf)
         restored_u16 = codec.decode_block(raw)
-        result = codec.reader_values(restored_u16) if self.return_float32 else restored_u16
+        if restored_u16.dtype.kind == "f":
+            result = restored_u16
+        else:
+            result = codec.reader_values(restored_u16) if self.return_float32 else restored_u16
         return ndarray_copy(result, out)
 
 

@@ -25,9 +25,9 @@ def test_numcodecs_float32_roundtrip(mode, leading):
     assert decoded is out
     assert out.shape == f32.shape and out.dtype == np.float32
 
-    true_ri = codec.reader_values(u16)
-    max_err_vs_true = float(np.max(np.abs(out.reshape(u16.shape) - true_ri)))
-    assert max_err_vs_true <= 1e-4
+    # v17 float RI contract: the bound is versus the float input (no uint16 grid conversion).
+    max_err_vs_input = float(np.max(np.abs(out.astype("f8") - f32.astype("f8"))))
+    assert max_err_vs_input <= 1e-4
 
 
 @pytest.mark.parametrize("mode", ["fourier", "fast"])

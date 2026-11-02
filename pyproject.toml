@@ -1,6 +1,6 @@
 [project]
 name = "htpack"
-version = "0.5.0b1"
+version = "0.6.0b1"
 description = "TCF Fourier compression and fast BitRound/Pcodec with final-output RI error checks"
 readme = "README.md"
 authors = [
